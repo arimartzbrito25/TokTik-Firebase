@@ -29,6 +29,7 @@ environment:
 # versions available, run `flutter pub outdated`.
 dependencies:
   animate_do: ^3.0.2
+  camera: ^0.12.1
   cloud_firestore: ^7.0.0
   cupertino_icons: ^1.0.2
   firebase_auth: ^7.0.0
@@ -37,6 +38,9 @@ dependencies:
     sdk: flutter
   image_picker: ^1.2.4
   intl: ^0.18.0
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  permission_handler: ^13.0.2
   provider: ^6.0.5
   video_player: ^2.5.1
 

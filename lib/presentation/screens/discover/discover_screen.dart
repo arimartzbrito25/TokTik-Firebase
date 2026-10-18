@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toktok/presentation/providers/discover_provider.dart';
+import 'package:toktok/presentation/screens/camera/camera_screen.dart';
 import 'package:toktok/presentation/screens/images/image_filter_screen.dart';
 import 'package:toktok/presentation/widgets/shared/video_scrollable_view.dart';
 
@@ -41,6 +42,18 @@ class DiscoverScreen extends StatelessWidget {
                 ),
               ],
             ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const CameraScreen(),
+            ),
+          );
+        },
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        child: const Icon(Icons.camera_alt),
+      ),
     );
   }
 }
