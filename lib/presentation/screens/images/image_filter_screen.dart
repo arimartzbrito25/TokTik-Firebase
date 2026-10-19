@@ -1,8 +1,13 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:toktok/presentation/screens/images/face_accessory.dart';
 
-enum _ImageFilterPreset {
+enum _ColorFilterPreset {
   original('Original', Icons.image_outlined, null),
   warm('Ámbar', Icons.wb_sunny_outlined, [
     1.10,
@@ -209,13 +214,32 @@ enum _ImageFilterPreset {
   final IconData icon;
   final List<double>? matrix;
 
-  const _ImageFilterPreset(this.label, this.icon, this.matrix);
+  const _ColorFilterPreset(this.label, this.icon, this.matrix);
 
   String? get frameAsset => switch (this) {
         halloween => 'assets/frames/IMG_5916.JPG.jpeg',
         christmas => 'assets/frames/IMG_5917.JPG.jpeg',
         _ => null,
       };
+}
+
+sealed class _SelectedFilter {
+  const _SelectedFilter();
+  String get label;
+}
+
+class _ColorSelected extends _SelectedFilter {
+  const _ColorSelected(this.preset);
+  final _ColorFilterPreset preset;
+  @override
+  String get label => preset.label;
+}
+
+class _FaceSelected extends _SelectedFilter {
+  const _FaceSelected(this.look);
+  final FaceLook look;
+  @override
+  String get label => look.label;
 }
 
 class ImageFilterScreen extends StatefulWidget {
@@ -229,9 +253,59 @@ class ImageFilterScreen extends StatefulWidget {
 
 class _ImageFilterScreenState extends State<ImageFilterScreen> {
   final ImagePicker _picker = ImagePicker();
+  final FaceDetector _faceDetector = FaceDetector(
+    options: FaceDetectorOptions(
+      enableLandmarks: true,
+      enableContours: false,
+      performanceMode: FaceDetectorMode.accurate,
+    ),
+  );
+
   Uint8List? _imageBytes;
-  _ImageFilterPreset _selectedFilter = _ImageFilterPreset.original;
+  String? _imagePath;
+  Size? _imageSize;
+  List<Face> _faces = const [];
+  Map<String, ui.Image> _overlayImages = {};
+  _SelectedFilter _selectedFilter =
+      const _ColorSelected(_ColorFilterPreset.original);
   bool _isPicking = false;
+  bool _isDetecting = false;
+  String? _faceStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _preloadOverlayImages();
+  }
+
+  @override
+  void dispose() {
+    _faceDetector.close();
+    for (final image in _overlayImages.values) {
+      image.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _preloadOverlayImages() async {
+    final assets = <String>{
+      for (final look in FaceLooks.all)
+        for (final accessory in look.accessories) accessory.asset,
+    };
+    final loaded = <String, ui.Image>{};
+    for (final asset in assets) {
+      try {
+        final data = await rootBundle.load(asset);
+        final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
+        final frame = await codec.getNextFrame();
+        loaded[asset] = frame.image;
+      } catch (_) {
+        // Missing asset — skip silently; overlay simply won't draw.
+      }
+    }
+    if (!mounted) return;
+    setState(() => _overlayImages = loaded);
+  }
 
   Future<void> _chooseImage() async {
     final source = await showModalBottomSheet<ImageSource>(
@@ -263,11 +337,17 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
       final image = await _picker.pickImage(source: source, imageQuality: 95);
       if (image == null) return;
       final bytes = await image.readAsBytes();
+      final decoded = await decodeImageFromList(bytes);
       if (!mounted) return;
       setState(() {
         _imageBytes = bytes;
-        _selectedFilter = _ImageFilterPreset.original;
+        _imagePath = image.path;
+        _imageSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
+        _selectedFilter = const _ColorSelected(_ColorFilterPreset.original);
+        _faces = const [];
+        _faceStatus = null;
       });
+      await _detectFaces(image.path);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -279,19 +359,80 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
     }
   }
 
-  Widget _filteredImage({required BoxFit fit}) {
-    final image = _imageBytes == null
-        ? const _DemoLandscape()
-        : Image.memory(_imageBytes!, fit: fit);
-    final matrix = _selectedFilter.matrix;
-    final filteredImage = matrix == null
-        ? image
-        : ColorFiltered(
-            colorFilter: ColorFilter.matrix(matrix),
-            child: image,
-          );
+  Future<void> _detectFaces(String path) async {
+    if (kIsWeb ||
+        !(defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS)) {
+      setState(() {
+        _faceStatus =
+            'La detección de rostros funciona en Android/iOS. En escritorio se simula el centro.';
+        _faces = const [];
+      });
+      return;
+    }
 
-    final frameAsset = _selectedFilter.frameAsset;
+    setState(() {
+      _isDetecting = true;
+      _faceStatus = 'Buscando rostros…';
+    });
+
+    try {
+      final inputImage = InputImage.fromFilePath(path);
+      final faces = await _faceDetector.processImage(inputImage);
+      if (!mounted) return;
+      setState(() {
+        _faces = faces;
+        _faceStatus = faces.isEmpty
+            ? 'No se detectó ningún rostro. Prueba con otra foto.'
+            : '${faces.length} rostro${faces.length == 1 ? '' : 's'} detectado${faces.length == 1 ? '' : 's'}';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _faces = const [];
+        _faceStatus = 'No se pudo detectar rostros en esta foto.';
+      });
+    } finally {
+      if (mounted) setState(() => _isDetecting = false);
+    }
+  }
+
+  List<FaceOverlayLayout> _currentLayouts() {
+    final selected = _selectedFilter;
+    if (selected is! _FaceSelected) return const [];
+
+    final imageSize = _imageSize;
+    if (imageSize == null) return const [];
+
+    if (_faces.isNotEmpty) {
+      return [
+        for (final face in _faces)
+          ...layoutsForFace(face, selected.look.accessories),
+      ];
+    }
+
+    final synthetic = Face(
+      boundingBox: Rect.fromCenter(
+        center: Offset(imageSize.width / 2, imageSize.height * 0.45),
+        width: imageSize.width * 0.42,
+        height: imageSize.height * 0.52,
+      ),
+      landmarks: const {},
+      contours: const {},
+      headEulerAngleZ: 0,
+    );
+    return layoutsForFace(synthetic, selected.look.accessories);
+  }
+
+  List<double>? get _activeMatrix {
+    final selected = _selectedFilter;
+    if (selected is _ColorSelected) return selected.preset.matrix;
+    if (selected is _FaceSelected) return selected.look.matrix;
+    return null;
+  }
+
+  Widget _applyColorExtras(Widget filteredImage, _ColorFilterPreset preset) {
+    final frameAsset = preset.frameAsset;
     if (frameAsset != null) {
       return Stack(
         fit: StackFit.passthrough,
@@ -306,7 +447,7 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
       );
     }
 
-    if (_selectedFilter == _ImageFilterPreset.vintage) {
+    if (preset == _ColorFilterPreset.vintage) {
       return Stack(
         fit: StackFit.passthrough,
         children: [
@@ -328,7 +469,7 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
       );
     }
 
-    if (_selectedFilter == _ImageFilterPreset.snap) {
+    if (preset == _ColorFilterPreset.snap) {
       final now = DateTime.now();
       final hour = now.hour.toString().padLeft(2, '0');
       final minute = now.minute.toString().padLeft(2, '0');
@@ -387,10 +528,52 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
     return filteredImage;
   }
 
+  Widget _filteredImage({required BoxFit fit}) {
+    final image = _imageBytes == null
+        ? const _DemoLandscape()
+        : Image.memory(_imageBytes!, fit: fit);
+    final matrix = _activeMatrix;
+    var filteredImage = matrix == null
+        ? image
+        : ColorFiltered(
+            colorFilter: ColorFilter.matrix(matrix),
+            child: image,
+          );
+
+    final selected = _selectedFilter;
+    if (selected is _ColorSelected) {
+      filteredImage = _applyColorExtras(filteredImage, selected.preset);
+    }
+
+    final layouts = _currentLayouts();
+    if (layouts.isEmpty || _imageSize == null) return filteredImage;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final widgetSize = Size(constraints.maxWidth, constraints.maxHeight);
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            filteredImage,
+            CustomPaint(
+              painter: FaceAccessoriesPainter(
+                layouts: layouts,
+                images: _overlayImages,
+                imageSize: _imageSize!,
+                widgetSize: widgetSize,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final imageBytes = _imageBytes;
     final hasImage = imageBytes != null || widget.previewMode;
+    final selected = _selectedFilter;
 
     return Scaffold(
       backgroundColor: const Color(0xFF111512),
@@ -412,7 +595,7 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
           children: [
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: const Color(0xFF1B201D),
@@ -426,27 +609,119 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                                 : FilledButton.icon(
                                     onPressed: _chooseImage,
                                     icon: const Icon(
-                                        Icons.photo_library_outlined),
+                                      Icons.photo_library_outlined,
+                                    ),
                                     label: const Text('Elegir una foto'),
                                   ),
                           )
                         : ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Center(
-                              child: _filteredImage(fit: BoxFit.contain),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                Center(
+                                  child: _filteredImage(fit: BoxFit.contain),
+                                ),
+                                if (_isDetecting)
+                                  const Align(
+                                    alignment: Alignment.topCenter,
+                                    child: Padding(
+                                      padding: EdgeInsets.all(12),
+                                      child: LinearProgressIndicator(
+                                        minHeight: 3,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                   ),
                 ),
               ),
             ),
-            if (hasImage) ...[
+            if (_faceStatus != null && hasImage)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      _faces.isEmpty
+                          ? Icons.face_retouching_off
+                          : Icons.face_retouching_natural,
+                      size: 16,
+                      color: _faces.isEmpty
+                          ? Colors.orangeAccent
+                          : const Color(0xFFFFC857),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _faceStatus!,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if (hasImage) ...[
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'ROSTRO',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 102,
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: FaceLooks.all.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
+                  itemBuilder: (context, index) {
+                    final look = FaceLooks.all[index];
+                    final isSelected =
+                        selected is _FaceSelected && selected.look.id == look.id;
+                    return _FilterChipThumb(
+                      label: look.label,
+                      selected: isSelected,
+                      onTap: () {
+                        if (_imageBytes == null && !widget.previewMode) {
+                          _chooseImage();
+                          return;
+                        }
+                        setState(() => _selectedFilter = _FaceSelected(look));
+                        if (_faces.isEmpty &&
+                            _imagePath != null &&
+                            !_isDetecting) {
+                          _detectFaces(_imagePath!);
+                        }
+                      },
+                      child: _FaceLookPreview(
+                        look: look,
+                        overlayImages: _overlayImages,
+                        selected: isSelected,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                 child: Row(
                   children: [
                     const Text(
-                      'FILTROS',
+                      'COLOR',
                       style: TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
@@ -455,7 +730,7 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                     ),
                     const Spacer(),
                     Text(
-                      _selectedFilter.label,
+                      selected.label,
                       style: const TextStyle(color: Colors.white),
                     ),
                   ],
@@ -466,12 +741,12 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                 child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
                   scrollDirection: Axis.horizontal,
-                  itemCount: _ImageFilterPreset.values.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(width: 10),
+                  itemCount: _ColorFilterPreset.values.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
-                    final preset = _ImageFilterPreset.values[index];
-                    final selected = preset == _selectedFilter;
+                    final preset = _ColorFilterPreset.values[index];
+                    final isSelected = selected is _ColorSelected &&
+                        selected.preset == preset;
                     final matrix = preset.matrix;
                     final frameAsset = preset.frameAsset;
                     final thumbnail = imageBytes == null
@@ -484,53 +759,19 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                             child: thumbnail,
                           );
 
-                    return SizedBox(
-                      width: 74,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(8),
-                        onTap: () => setState(() => _selectedFilter = preset),
-                        child: Column(
-                          children: [
-                            Container(
-                              height: 64,
-                              width: 64,
-                              decoration: BoxDecoration(
-                                border: Border.all(
-                                  color: selected
-                                      ? const Color(0xFFFFC857)
-                                      : Colors.white24,
-                                  width: selected ? 2 : 1,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    filteredThumbnail,
-                                    if (frameAsset != null)
-                                      Image.asset(
-                                        frameAsset,
-                                        fit: BoxFit.fill,
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              preset.label,
-                              maxLines: 1,
-                              style: TextStyle(
-                                color: selected
-                                    ? const Color(0xFFFFC857)
-                                    : Colors.white70,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ],
-                        ),
+                    return _FilterChipThumb(
+                      label: preset.label,
+                      selected: isSelected,
+                      onTap: () => setState(
+                        () => _selectedFilter = _ColorSelected(preset),
+                      ),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          filteredThumbnail,
+                          if (frameAsset != null)
+                            Image.asset(frameAsset, fit: BoxFit.fill),
+                        ],
                       ),
                     );
                   },
@@ -539,6 +780,97 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FilterChipThumb extends StatelessWidget {
+  const _FilterChipThumb({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 74,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Column(
+          children: [
+            Container(
+              height: 64,
+              width: 64,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: selected ? const Color(0xFFFFC857) : Colors.white24,
+                  width: selected ? 2 : 1,
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: child,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: selected ? const Color(0xFFFFC857) : Colors.white70,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FaceLookPreview extends StatelessWidget {
+  const _FaceLookPreview({
+    required this.look,
+    required this.overlayImages,
+    required this.selected,
+  });
+
+  final FaceLook look;
+  final Map<String, ui.Image> overlayImages;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = look.accessories.first.asset;
+    return ColoredBox(
+      color: const Color(0xFF2A312D),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Center(
+            child: Icon(
+              look.icon,
+              color: selected ? const Color(0xFFFFC857) : Colors.white38,
+              size: 22,
+            ),
+          ),
+          if (overlayImages.containsKey(asset))
+            Padding(
+              padding: const EdgeInsets.all(6),
+              child: Image.asset(asset, fit: BoxFit.contain),
+            ),
+        ],
       ),
     );
   }

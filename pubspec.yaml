@@ -37,6 +37,7 @@ dependencies:
   firebase_storage: ^14.0.0
   flutter:
     sdk: flutter
+  google_mlkit_face_detection: ^0.15.1
   image_picker: ^1.2.4
   intl: ^0.18.0
   path: ^1.9.1
@@ -64,6 +65,7 @@ flutter:
   assets:
     - assets/videos/
     - assets/frames/
+    - assets/filters/
   #   - images/a_dot_ham.jpeg
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
