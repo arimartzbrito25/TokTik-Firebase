@@ -1,10 +1,8 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:toktok/presentation/screens/camera/media_preview_screen.dart';
 
@@ -39,6 +37,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (kIsWeb) return;
+
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
 
@@ -51,6 +51,9 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<bool> _requestPermissions() async {
+    // En web el navegador pide permiso al abrir la cámara.
+    if (kIsWeb) return true;
+
     final statuses = await [
       Permission.camera,
       Permission.microphone,
@@ -149,13 +152,6 @@ class _CameraScreenState extends State<CameraScreen>
     await _initializeController(nextIndex);
   }
 
-  Future<String> _buildOutputPath(String extension) async {
-    final directory = await getTemporaryDirectory();
-    final fileName =
-        'cruz_${DateTime.now().millisecondsSinceEpoch}.$extension';
-    return path.join(directory.path, fileName);
-  }
-
   Future<void> _takePhoto() async {
     final controller = _controller;
     if (controller == null ||
@@ -169,14 +165,12 @@ class _CameraScreenState extends State<CameraScreen>
 
     try {
       final photo = await controller.takePicture();
-      final savedPath = await _buildOutputPath('jpg');
-      await File(photo.path).copy(savedPath);
 
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => MediaPreviewScreen(
-            filePath: savedPath,
+            file: photo,
             isVideo: false,
           ),
         ),
@@ -207,14 +201,11 @@ class _CameraScreenState extends State<CameraScreen>
           _recordingDuration = Duration.zero;
         });
 
-        final savedPath = await _buildOutputPath('mp4');
-        await File(video.path).copy(savedPath);
-
         if (!mounted) return;
         await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => MediaPreviewScreen(
-              filePath: savedPath,
+              file: video,
               isVideo: true,
             ),
           ),
@@ -230,15 +221,17 @@ class _CameraScreenState extends State<CameraScreen>
       return;
     }
 
-    final micStatus = await Permission.microphone.request();
-    if (!micStatus.isGranted) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Se necesita el micrófono para grabar video.'),
-        ),
-      );
-      return;
+    if (!kIsWeb) {
+      final micStatus = await Permission.microphone.request();
+      if (!micStatus.isGranted) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Se necesita el micrófono para grabar video.'),
+          ),
+        );
+        return;
+      }
     }
 
     setState(() => _isBusy = true);

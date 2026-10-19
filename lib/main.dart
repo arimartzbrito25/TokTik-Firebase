@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:toktok/config/theme/app_theme.dart';
 import 'package:toktok/presentation/providers/discover_provider.dart';
-import 'package:toktok/presentation/screens/discover/discover_screen.dart';
+import 'package:toktok/presentation/screens/home/home_shell.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -54,7 +54,7 @@ class MyApp extends StatelessWidget {
             }
 
             if (snapshot.hasData) {
-              return const DiscoverScreen();
+              return const HomeShell();
             }
             return const LoginScreen();
           },

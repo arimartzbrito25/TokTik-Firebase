@@ -1,30 +1,47 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:toktok/main.dart';
+import 'package:provider/provider.dart';
+import 'package:toktok/domain/entities/video_post.dart';
+import 'package:toktok/presentation/providers/discover_provider.dart';
+import 'package:toktok/presentation/screens/create/create_screen.dart';
+import 'package:toktok/presentation/screens/home/home_shell.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('VideoPost marca imágenes correctamente', () {
+    final imagePost = VideoPost(
+      caption: 'Foto',
+      videoUrl: 'https://example.com/a.jpg',
+      mediaType: 'image',
+    );
+    final videoPost = VideoPost(
+      caption: 'Clip',
+      videoUrl: 'https://example.com/a.mp4',
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(imagePost.isImage, isTrue);
+    expect(videoPost.isImage, isFalse);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('HomeShell muestra Feed, Crear y Perfil', (tester) async {
+    await tester.pumpWidget(
+      ChangeNotifierProvider(
+        create: (_) => DiscoverProvider(),
+        child: const MaterialApp(home: HomeShell()),
+      ),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Feed'), findsOneWidget);
+    expect(find.text('Crear'), findsOneWidget);
+    expect(find.text('Perfil'), findsOneWidget);
+  });
+
+  testWidgets('CreateScreen lista las opciones de integración', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(home: CreateScreen()),
+    );
+
+    expect(find.text('Cámara'), findsOneWidget);
+    expect(find.text('Galería'), findsOneWidget);
+    expect(find.text('Publicar con enlace'), findsOneWidget);
   });
 }
