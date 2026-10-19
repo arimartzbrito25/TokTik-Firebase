@@ -202,56 +202,20 @@ enum _ImageFilterPreset {
     1,
     0,
   ]),
-  halloween('Halloween', Icons.nights_stay_outlined, [
-    1.12,
-    0.02,
-    0.04,
-    0,
-    4,
-    0.02,
-    0.91,
-    0.04,
-    0,
-    0,
-    0.08,
-    0.02,
-    1.13,
-    0,
-    8,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ]),
-  christmas('Navidad', Icons.ac_unit, [
-    1.04,
-    0.02,
-    0.02,
-    0,
-    4,
-    0.02,
-    1.08,
-    0.03,
-    0,
-    5,
-    0.03,
-    0.06,
-    1.16,
-    0,
-    10,
-    0,
-    0,
-    0,
-    1,
-    0,
-  ]);
+  halloween('Halloween', Icons.nights_stay_outlined, null),
+  christmas('Navidad', Icons.ac_unit, null);
 
   final String label;
   final IconData icon;
   final List<double>? matrix;
 
   const _ImageFilterPreset(this.label, this.icon, this.matrix);
+
+  String? get frameAsset => switch (this) {
+        halloween => 'assets/frames/IMG_5916.JPG.jpeg',
+        christmas => 'assets/frames/IMG_5917.JPG.jpeg',
+        _ => null,
+      };
 }
 
 class ImageFilterScreen extends StatefulWidget {
@@ -327,89 +291,15 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
             child: image,
           );
 
-    if (_selectedFilter == _ImageFilterPreset.halloween ||
-        _selectedFilter == _ImageFilterPreset.christmas) {
-      final isHalloween = _selectedFilter == _ImageFilterPreset.halloween;
+    final frameAsset = _selectedFilter.frameAsset;
+    if (frameAsset != null) {
       return Stack(
         fit: StackFit.passthrough,
         children: [
           filteredImage,
           Positioned.fill(
             child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: isHalloween
-                        ? [
-                            const Color(0x44220A35),
-                            Colors.transparent,
-                            const Color(0x55220A35),
-                          ]
-                        : [
-                            const Color(0x332A6E54),
-                            Colors.transparent,
-                            const Color(0x44305B75),
-                          ],
-                  ),
-                ),
-                child: Stack(
-                  children: isHalloween
-                      ? [
-                          const Positioned(
-                            top: 14,
-                            left: 14,
-                            child: Icon(Icons.nights_stay,
-                                color: Color(0xFFFF9A3D), size: 30),
-                          ),
-                          const Positioned(
-                            top: 18,
-                            right: 18,
-                            child: Icon(Icons.auto_awesome,
-                                color: Color(0xFFFFC857), size: 20),
-                          ),
-                          const Positioned(
-                            bottom: 16,
-                            left: 18,
-                            child: Icon(Icons.auto_awesome,
-                                color: Color(0xFFFF9A3D), size: 17),
-                          ),
-                          const Positioned(
-                            bottom: 14,
-                            right: 14,
-                            child: Icon(Icons.local_fire_department,
-                                color: Color(0xFFFF9A3D), size: 28),
-                          ),
-                        ]
-                      : [
-                          const Positioned(
-                            top: 14,
-                            left: 14,
-                            child: Icon(Icons.ac_unit,
-                                color: Color(0xFFE7F7FF), size: 25),
-                          ),
-                          const Positioned(
-                            top: 18,
-                            right: 18,
-                            child: Icon(Icons.auto_awesome,
-                                color: Color(0xFFFFD166), size: 20),
-                          ),
-                          const Positioned(
-                            bottom: 14,
-                            left: 16,
-                            child: Icon(Icons.park,
-                                color: Color(0xFF6FC28A), size: 27),
-                          ),
-                          const Positioned(
-                            bottom: 14,
-                            right: 14,
-                            child: Icon(Icons.card_giftcard,
-                                color: Color(0xFFFF7474), size: 25),
-                          ),
-                        ],
-                ),
-              ),
+              child: Image.asset(frameAsset, fit: BoxFit.fill),
             ),
           ),
         ],
@@ -451,7 +341,8 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
             right: 16,
             child: IgnorePointer(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFFC00),
                   borderRadius: BorderRadius.circular(14),
@@ -582,6 +473,17 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                     final preset = _ImageFilterPreset.values[index];
                     final selected = preset == _selectedFilter;
                     final matrix = preset.matrix;
+                    final frameAsset = preset.frameAsset;
+                    final thumbnail = imageBytes == null
+                        ? const _DemoLandscape()
+                        : Image.memory(imageBytes, fit: BoxFit.cover);
+                    final filteredThumbnail = matrix == null
+                        ? thumbnail
+                        : ColorFiltered(
+                            colorFilter: ColorFilter.matrix(matrix),
+                            child: thumbnail,
+                          );
+
                     return SizedBox(
                       width: 74,
                       child: InkWell(
@@ -603,22 +505,17 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                               ),
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(6),
-                                child: matrix == null
-                                    ? imageBytes == null
-                                        ? const _DemoLandscape()
-                                        : Image.memory(
-                                            imageBytes,
-                                            fit: BoxFit.cover,
-                                          )
-                                    : ColorFiltered(
-                                        colorFilter: ColorFilter.matrix(matrix),
-                                        child: imageBytes == null
-                                            ? const _DemoLandscape()
-                                            : Image.memory(
-                                                imageBytes,
-                                                fit: BoxFit.cover,
-                                              ),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    filteredThumbnail,
+                                    if (frameAsset != null)
+                                      Image.asset(
+                                        frameAsset,
+                                        fit: BoxFit.fill,
                                       ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 5),
