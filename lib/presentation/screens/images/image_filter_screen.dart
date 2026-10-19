@@ -92,6 +92,116 @@ enum _ImageFilterPreset {
     1,
     0,
   ]),
+  clarendon('Clarendon', Icons.contrast, [
+    1.2,
+    0,
+    0,
+    0,
+    -30,
+    0,
+    1.2,
+    0,
+    0,
+    -22,
+    0,
+    0,
+    1.25,
+    0,
+    -15,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
+  juno('Juno', Icons.local_fire_department_outlined, [
+    1.2756,
+    -0.2503,
+    -0.0253,
+    0,
+    12,
+    -0.0744,
+    1.0997,
+    -0.0253,
+    0,
+    4,
+    -0.0744,
+    -0.2503,
+    1.3247,
+    0,
+    -10,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
+  lark('Lark', Icons.light_mode_outlined, [
+    0.8819,
+    0.1073,
+    0.0108,
+    0,
+    18,
+    0.0319,
+    0.9573,
+    0.0108,
+    0,
+    20,
+    0.0319,
+    0.1073,
+    0.8608,
+    0,
+    26,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
+  vintage('Vintage', Icons.camera_roll_outlined, [
+    0.393,
+    0.769,
+    0.189,
+    0,
+    10,
+    0.349,
+    0.686,
+    0.168,
+    0,
+    8,
+    0.272,
+    0.534,
+    0.131,
+    0,
+    4,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
+  snap('Snap', Icons.face_retouching_natural, [
+    1.1504,
+    -0.143,
+    -0.0144,
+    0,
+    6,
+    -0.0425,
+    1.057,
+    -0.0144,
+    0,
+    6,
+    -0.0425,
+    -0.143,
+    1.1856,
+    0,
+    6,
+    0,
+    0,
+    0,
+    1,
+    0,
+  ]),
   halloween('Halloween', Icons.nights_stay_outlined, [
     1.12,
     0.02,
@@ -298,6 +408,83 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                                 color: Color(0xFFFF7474), size: 25),
                           ),
                         ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_selectedFilter == _ImageFilterPreset.vintage) {
+      return Stack(
+        fit: StackFit.passthrough,
+        children: [
+          filteredImage,
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    radius: 0.95,
+                    colors: [Colors.transparent, Color(0x99000000)],
+                    stops: [0.55, 1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_selectedFilter == _ImageFilterPreset.snap) {
+      final now = DateTime.now();
+      final hour = now.hour.toString().padLeft(2, '0');
+      final minute = now.minute.toString().padLeft(2, '0');
+      return Stack(
+        fit: StackFit.passthrough,
+        children: [
+          filteredImage,
+          Positioned(
+            top: 16,
+            right: 16,
+            child: IgnorePointer(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFFC00),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  '$hour:$minute',
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 24,
+            child: IgnorePointer(
+              child: Center(
+                child: Text(
+                  'TokTik',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    shadows: [
+                      Shadow(color: Color(0xFFFF2D87), offset: Offset(2, 2)),
+                      Shadow(color: Colors.black45, blurRadius: 10),
+                    ],
+                  ),
                 ),
               ),
             ),
