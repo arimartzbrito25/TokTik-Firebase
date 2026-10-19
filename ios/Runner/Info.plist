@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>TokTik necesita la cámara para tomar una foto y aplicar filtros.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TokTik necesita acceso a tus fotos para aplicar filtros de imagen.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

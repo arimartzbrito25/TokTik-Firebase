@@ -35,6 +35,7 @@ dependencies:
   firebase_core: ^5.0.0
   flutter:
     sdk: flutter
+  image_picker: ^1.2.4
   intl: ^0.18.0
   provider: ^6.0.5
   video_player: ^2.5.1
