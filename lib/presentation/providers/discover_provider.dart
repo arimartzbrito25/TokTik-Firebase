@@ -13,9 +13,11 @@ class DiscoverProvider extends ChangeNotifier {
 
   Future<void> loadNextPage() async {
     await _subscription?.cancel();
-
     initialLoading = true;
     notifyListeners();
+
+    // Firestore suele estar bloqueado por rules; cargamos demos ya.
+    seedLocalDemoVideos();
 
     _subscription = FirebaseFirestore.instance
         .collection('videos')
@@ -37,6 +39,8 @@ class DiscoverProvider extends ChangeNotifier {
           );
         }
 
+        if (remote.isEmpty) return;
+
         final locals = <VideoPost>[];
         for (final post in videos) {
           if (post.id.startsWith('local_') || post.id.startsWith('demo_')) {
@@ -44,25 +48,22 @@ class DiscoverProvider extends ChangeNotifier {
           }
         }
 
-        videos = <VideoPost>[];
-        videos.addAll(locals);
-        videos.addAll(remote);
+        final next = <VideoPost>[];
+        next.addAll(locals);
+        next.addAll(remote);
+        videos = next;
         initialLoading = false;
         notifyListeners();
       },
       onError: (error) {
         debugPrint('Error al cargar videos: $error');
+        // Ya hay demos locales; no crashear.
         initialLoading = false;
-        if (videos.isEmpty) {
-          seedLocalDemoVideos();
-        } else {
-          notifyListeners();
-        }
+        notifyListeners();
       },
     );
   }
 
-  /// Publica en el feed de esta sesión (sin Storage / sin write en Firestore).
   void addLocalPost({
     required String mediaUrl,
     required String description,
@@ -87,6 +88,8 @@ class DiscoverProvider extends ChangeNotifier {
 
   int seedLocalDemoVideos() {
     if (_didSeedLocalDemos && videos.isNotEmpty) {
+      initialLoading = false;
+      notifyListeners();
       return videos.length;
     }
 
@@ -102,12 +105,6 @@ class DiscoverProvider extends ChangeNotifier {
         caption: 'Demo · Mariposa',
         videoUrl:
             'https://flutter.github.io/assets-for-api-docs/assets/videos/butterfly.mp4',
-      ),
-      VideoPost(
-        id: 'demo_blazes',
-        caption: 'Demo · Blazes',
-        videoUrl:
-            'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
       ),
     ];
 
