@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:toktok/presentation/providers/discover_provider.dart';
 import 'package:toktok/presentation/screens/camera/camera_screen.dart';
 import 'package:toktok/presentation/screens/images/image_filter_screen.dart';
+import 'package:toktok/presentation/screens/upload/gallery_upload_screen.dart';
 import 'package:toktok/presentation/widgets/shared/video_scrollable_view.dart';
 
 class DiscoverScreen extends StatelessWidget {
@@ -22,21 +23,45 @@ class DiscoverScreen extends StatelessWidget {
                   top: 8,
                   right: 12,
                   child: SafeArea(
-                    child: Material(
-                      color: const Color(0xAA171A18),
-                      shape: const CircleBorder(),
-                      child: IconButton(
-                        tooltip: 'Filtros de imagen',
-                        color: Colors.white,
-                        icon: const Icon(Icons.add_photo_alternate_outlined),
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                              builder: (_) => const ImageFilterScreen(),
-                            ),
-                          );
-                        },
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Botón para subir imágenes/videos desde la galería (Tu parte)
+                        Material(
+                          color: const Color(0xAA171A18),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: 'Subir desde Galería',
+                            color: Colors.white,
+                            icon: const Icon(Icons.photo_library),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const GalleryUploadScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // Botón para filtros de imagen existentes
+                        Material(
+                          color: const Color(0xAA171A18),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            tooltip: 'Filtros de imagen',
+                            color: Colors.white,
+                            icon: const Icon(Icons.add_photo_alternate_outlined),
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const ImageFilterScreen(),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
