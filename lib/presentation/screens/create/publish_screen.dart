@@ -4,6 +4,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:toktok/infrastructure/services/media_upload_service.dart';
 import 'package:toktok/presentation/providers/discover_provider.dart';
+import 'package:toktok/presentation/screens/images/face_accessory.dart';
+import 'package:toktok/presentation/widgets/media/face_filtered_image.dart';
 import 'package:toktok/shared/media/media_filter_presets.dart';
 import 'package:toktok/shared/media/media_helpers.dart';
 import 'package:video_player/video_player.dart';
@@ -39,6 +41,8 @@ class _PublishScreenState extends State<PublishScreen> {
   double _progress = 0;
 
   MediaFilterPreset get _filter => MediaFilterPreset.fromId(widget.filterName);
+  AppliedFilter get _applied => AppliedFilter.parse(widget.filterName);
+  FaceLook? get _faceLook => FaceLooks.byId(_applied.faceLookId);
 
   bool get _isUrlOnly => widget.remoteUrl != null && widget.file == null;
 
@@ -186,7 +190,8 @@ class _PublishScreenState extends State<PublishScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Filtro: ${_filter.label}',
+              'Filtro: ${_filter.label}'
+              '${_faceLook != null ? ' · Rostro: ${_faceLook!.label}' : ''}',
               style: const TextStyle(color: Colors.white70),
             ),
             const SizedBox(height: 16),
@@ -234,6 +239,27 @@ class _PublishScreenState extends State<PublishScreen> {
   }
 
   Widget _buildPreview() {
+    if (!widget.isVideo && _faceLook != null) {
+      final preview = FaceFilteredImage(
+        bytes: _imageBytes,
+        sourcePath: widget.file?.path ?? widget.remoteUrl,
+        look: _faceLook,
+        colorMatrix: _filter.matrix,
+        fit: BoxFit.cover,
+        initialShift: Offset(_applied.shiftX, _applied.shiftY),
+        initialScale: _applied.scale,
+      );
+      final frame = _filter.frameAsset;
+      if (frame == null) return preview;
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          preview,
+          IgnorePointer(child: Image.asset(frame, fit: BoxFit.fill)),
+        ],
+      );
+    }
+
     final child = widget.isVideo
         ? _buildVideo()
         : LocalImage(

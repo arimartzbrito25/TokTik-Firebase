@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:toktok/domain/entities/video_post.dart';
 import 'package:toktok/presentation/widgets/shared/video_buttons.dart';
 import 'package:toktok/presentation/widgets/video/fullscreen_player.dart';
+import 'package:toktok/presentation/screens/images/face_accessory.dart';
+import 'package:toktok/presentation/widgets/media/face_filtered_image.dart';
 import 'package:toktok/presentation/widgets/video/video_background.dart';
 import 'package:toktok/shared/media/media_filter_presets.dart';
 
@@ -90,27 +92,40 @@ class _ImagePostView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final filter = MediaFilterPreset.fromId(filterName);
+    final applied = AppliedFilter.parse(filterName);
+    final faceLook = FaceLooks.byId(applied.faceLookId);
     final frame = filter.frameAsset;
 
     return Stack(
       fit: StackFit.expand,
       children: [
-        ColorFiltered(
-          colorFilter: ColorFilter.matrix(filter.matrix),
-          child: Image.network(
-            imageUrl,
+        if (faceLook != null)
+          FaceFilteredImage(
+            sourcePath: imageUrl,
+            look: faceLook,
+            colorMatrix: filter.matrix,
             fit: BoxFit.cover,
-            loadingBuilder: (context, child, progress) {
-              if (progress == null) return child;
-              return const Center(
-                child: CircularProgressIndicator(strokeWidth: 2),
-              );
-            },
-            errorBuilder: (_, __, ___) => const Center(
-              child: Icon(Icons.broken_image, color: Colors.white54, size: 48),
+            initialShift: Offset(applied.shiftX, applied.shiftY),
+            initialScale: applied.scale,
+          )
+        else
+          ColorFiltered(
+            colorFilter: ColorFilter.matrix(filter.matrix),
+            child: Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return const Center(
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                );
+              },
+              errorBuilder: (_, __, ___) => const Center(
+                child:
+                    Icon(Icons.broken_image, color: Colors.white54, size: 48),
+              ),
             ),
           ),
-        ),
         if (frame != null)
           IgnorePointer(child: Image.asset(frame, fit: BoxFit.fill)),
         VideoBackground(stops: const [0.8, 1.0]),

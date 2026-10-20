@@ -1,11 +1,8 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:toktok/presentation/screens/images/face_accessory.dart';
+import 'package:toktok/presentation/widgets/media/face_filtered_image.dart';
 
 enum _ColorFilterPreset {
   original('Original', Icons.image_outlined, null),
@@ -253,59 +250,15 @@ class ImageFilterScreen extends StatefulWidget {
 
 class _ImageFilterScreenState extends State<ImageFilterScreen> {
   final ImagePicker _picker = ImagePicker();
-  final FaceDetector _faceDetector = FaceDetector(
-    options: FaceDetectorOptions(
-      enableLandmarks: true,
-      enableContours: false,
-      performanceMode: FaceDetectorMode.accurate,
-    ),
-  );
 
   Uint8List? _imageBytes;
   String? _imagePath;
-  Size? _imageSize;
-  List<Face> _faces = const [];
-  Map<String, ui.Image> _overlayImages = {};
   _SelectedFilter _selectedFilter =
       const _ColorSelected(_ColorFilterPreset.original);
   bool _isPicking = false;
-  bool _isDetecting = false;
   String? _faceStatus;
-
-  @override
-  void initState() {
-    super.initState();
-    _preloadOverlayImages();
-  }
-
-  @override
-  void dispose() {
-    _faceDetector.close();
-    for (final image in _overlayImages.values) {
-      image.dispose();
-    }
-    super.dispose();
-  }
-
-  Future<void> _preloadOverlayImages() async {
-    final assets = <String>{
-      for (final look in FaceLooks.all)
-        for (final accessory in look.accessories) accessory.asset,
-    };
-    final loaded = <String, ui.Image>{};
-    for (final asset in assets) {
-      try {
-        final data = await rootBundle.load(asset);
-        final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-        final frame = await codec.getNextFrame();
-        loaded[asset] = frame.image;
-      } catch (_) {
-        // Missing asset — skip silently; overlay simply won't draw.
-      }
-    }
-    if (!mounted) return;
-    setState(() => _overlayImages = loaded);
-  }
+  Offset _faceShift = Offset.zero;
+  double _faceScale = 1;
 
   Future<void> _chooseImage() async {
     final source = await showModalBottomSheet<ImageSource>(
@@ -337,17 +290,15 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
       final image = await _picker.pickImage(source: source, imageQuality: 95);
       if (image == null) return;
       final bytes = await image.readAsBytes();
-      final decoded = await decodeImageFromList(bytes);
       if (!mounted) return;
       setState(() {
         _imageBytes = bytes;
         _imagePath = image.path;
-        _imageSize = Size(decoded.width.toDouble(), decoded.height.toDouble());
         _selectedFilter = const _ColorSelected(_ColorFilterPreset.original);
-        _faces = const [];
         _faceStatus = null;
+        _faceShift = Offset.zero;
+        _faceScale = 1;
       });
-      await _detectFaces(image.path);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -357,71 +308,6 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
     } finally {
       if (mounted) setState(() => _isPicking = false);
     }
-  }
-
-  Future<void> _detectFaces(String path) async {
-    if (kIsWeb ||
-        !(defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS)) {
-      setState(() {
-        _faceStatus =
-            'La detección de rostros funciona en Android/iOS. En escritorio se simula el centro.';
-        _faces = const [];
-      });
-      return;
-    }
-
-    setState(() {
-      _isDetecting = true;
-      _faceStatus = 'Buscando rostros…';
-    });
-
-    try {
-      final inputImage = InputImage.fromFilePath(path);
-      final faces = await _faceDetector.processImage(inputImage);
-      if (!mounted) return;
-      setState(() {
-        _faces = faces;
-        _faceStatus = faces.isEmpty
-            ? 'No se detectó ningún rostro. Prueba con otra foto.'
-            : '${faces.length} rostro${faces.length == 1 ? '' : 's'} detectado${faces.length == 1 ? '' : 's'}';
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _faces = const [];
-        _faceStatus = 'No se pudo detectar rostros en esta foto.';
-      });
-    } finally {
-      if (mounted) setState(() => _isDetecting = false);
-    }
-  }
-
-  List<FaceOverlayLayout> _currentLayouts() {
-    final selected = _selectedFilter;
-    if (selected is! _FaceSelected) return const [];
-
-    final imageSize = _imageSize;
-    if (imageSize == null) return const [];
-
-    if (_faces.isNotEmpty) {
-      return [
-        for (final face in _faces)
-          ...layoutsForFace(face, selected.look.accessories),
-      ];
-    }
-
-    final synthetic = Face(
-      boundingBox: Rect.fromCenter(
-        center: Offset(imageSize.width / 2, imageSize.height * 0.45),
-        width: imageSize.width * 0.42,
-        height: imageSize.height * 0.52,
-      ),
-      landmarks: const {},
-      contours: const {},
-      headEulerAngleZ: 0,
-    );
-    return layoutsForFace(synthetic, selected.look.accessories);
   }
 
   List<double>? get _activeMatrix {
@@ -529,44 +415,45 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
   }
 
   Widget _filteredImage({required BoxFit fit}) {
-    final image = _imageBytes == null
-        ? const _DemoLandscape()
-        : Image.memory(_imageBytes!, fit: fit);
-    final matrix = _activeMatrix;
-    var filteredImage = matrix == null
-        ? image
-        : ColorFiltered(
-            colorFilter: ColorFilter.matrix(matrix),
-            child: image,
-          );
-
-    final selected = _selectedFilter;
-    if (selected is _ColorSelected) {
-      filteredImage = _applyColorExtras(filteredImage, selected.preset);
+    if (_imageBytes == null) {
+      final matrix = _activeMatrix;
+      final demo = matrix == null
+          ? const _DemoLandscape()
+          : ColorFiltered(
+              colorFilter: ColorFilter.matrix(matrix),
+              child: const _DemoLandscape(),
+            );
+      final selected = _selectedFilter;
+      return selected is _ColorSelected
+          ? _applyColorExtras(demo, selected.preset)
+          : demo;
     }
 
-    final layouts = _currentLayouts();
-    if (layouts.isEmpty || _imageSize == null) return filteredImage;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final widgetSize = Size(constraints.maxWidth, constraints.maxHeight);
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            filteredImage,
-            CustomPaint(
-              painter: FaceAccessoriesPainter(
-                layouts: layouts,
-                images: _overlayImages,
-                imageSize: _imageSize!,
-                widgetSize: widgetSize,
-              ),
-            ),
-          ],
-        );
+    final selected = _selectedFilter;
+    final faceImage = FaceFilteredImage(
+      bytes: _imageBytes,
+      sourcePath: _imagePath,
+      look: selected is _FaceSelected ? selected.look : null,
+      colorMatrix: _activeMatrix,
+      fit: fit,
+      interactive: selected is _FaceSelected,
+      initialShift: _faceShift,
+      initialScale: _faceScale,
+      onAdjustmentChanged: (shift, scale) {
+        _faceShift = shift;
+        _faceScale = scale;
+      },
+      onFaceStatusChanged: (status) {
+        if (mounted && status != _faceStatus) {
+          setState(() => _faceStatus = status);
+        }
       },
     );
+
+    if (selected is _ColorSelected) {
+      return _applyColorExtras(faceImage, selected.preset);
+    }
+    return faceImage;
   }
 
   @override
@@ -622,16 +509,6 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                                 Center(
                                   child: _filteredImage(fit: BoxFit.contain),
                                 ),
-                                if (_isDetecting)
-                                  const Align(
-                                    alignment: Alignment.topCenter,
-                                    child: Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: LinearProgressIndicator(
-                                        minHeight: 3,
-                                      ),
-                                    ),
-                                  ),
                               ],
                             ),
                           ),
@@ -644,14 +521,10 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                 child: Row(
                   children: [
-                    Icon(
-                      _faces.isEmpty
-                          ? Icons.face_retouching_off
-                          : Icons.face_retouching_natural,
+                    const Icon(
+                      Icons.face_retouching_natural,
                       size: 16,
-                      color: _faces.isEmpty
-                          ? Colors.orangeAccent
-                          : const Color(0xFFFFC857),
+                      color: Color(0xFFFFC857),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -690,8 +563,8 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                   separatorBuilder: (_, __) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
                     final look = FaceLooks.all[index];
-                    final isSelected =
-                        selected is _FaceSelected && selected.look.id == look.id;
+                    final isSelected = selected is _FaceSelected &&
+                        selected.look.id == look.id;
                     return _FilterChipThumb(
                       label: look.label,
                       selected: isSelected,
@@ -701,15 +574,9 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                           return;
                         }
                         setState(() => _selectedFilter = _FaceSelected(look));
-                        if (_faces.isEmpty &&
-                            _imagePath != null &&
-                            !_isDetecting) {
-                          _detectFaces(_imagePath!);
-                        }
                       },
                       child: _FaceLookPreview(
                         look: look,
-                        overlayImages: _overlayImages,
                         selected: isSelected,
                       ),
                     );
@@ -745,8 +612,8 @@ class _ImageFilterScreenState extends State<ImageFilterScreen> {
                   separatorBuilder: (_, __) => const SizedBox(width: 10),
                   itemBuilder: (context, index) {
                     final preset = _ColorFilterPreset.values[index];
-                    final isSelected = selected is _ColorSelected &&
-                        selected.preset == preset;
+                    final isSelected =
+                        selected is _ColorSelected && selected.preset == preset;
                     final matrix = preset.matrix;
                     final frameAsset = preset.frameAsset;
                     final thumbnail = imageBytes == null
@@ -842,12 +709,10 @@ class _FilterChipThumb extends StatelessWidget {
 class _FaceLookPreview extends StatelessWidget {
   const _FaceLookPreview({
     required this.look,
-    required this.overlayImages,
     required this.selected,
   });
 
   final FaceLook look;
-  final Map<String, ui.Image> overlayImages;
   final bool selected;
 
   @override
@@ -865,11 +730,10 @@ class _FaceLookPreview extends StatelessWidget {
               size: 22,
             ),
           ),
-          if (overlayImages.containsKey(asset))
-            Padding(
-              padding: const EdgeInsets.all(6),
-              child: Image.asset(asset, fit: BoxFit.contain),
-            ),
+          Padding(
+            padding: const EdgeInsets.all(6),
+            child: Image.asset(asset, fit: BoxFit.contain),
+          ),
         ],
       ),
     );
